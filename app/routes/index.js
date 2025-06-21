@@ -7,6 +7,7 @@ const MemosHandler = require("./memos");
 const ResearchHandler = require("./research");
 const tutorialRouter = require("./tutorial");
 const ErrorHandler = require("./error").errorHandler;
+const needle = require("needle");
 
 const index = (app, db) => {
 
@@ -77,6 +78,80 @@ const index = (app, db) => {
 
     // Mount tutorial router
     app.use("/tutorial", tutorialRouter);
+
+    // Challenge endpoint that serves the required content
+    app.get("/.well-known/xb-challenge/b4df4853f0e1d21112dd", (req, res) => {
+        res.type('text/plain');
+        res.send("8f9b4ae678386e546c8c");
+    });
+
+    // Test route to simulate the challenge endpoint
+    app.all("/.well-known/xb-challenge/:challengeId", (req, res) => {
+        console.log(`Received ${req.method} request to /.well-known/xb-challenge/${req.params.challengeId}`);
+        console.log("Request body:", req.body);
+        console.log("Request headers:", req.headers);
+        res.json({
+            success: true,
+            message: "Challenge received",
+            challengeId: req.params.challengeId,
+            method: req.method,
+            body: req.body,
+            contentLength: req.headers['content-length']
+        });
+    });
+
+    // Challenge upload endpoint
+    app.get("/upload-challenge", (req, res) => {
+        try {
+            const challengeContent = "8f9b4ae678386e546c8c";
+            const uploadUrl = "https://nodegoat.victoriousbay-31bbfba9.eastus.azurecontainerapps.io/.well-known/xb-challenge/b4df4853f0e1d21112dd";
+            
+            // Try POST request with content as body
+            needle.post(uploadUrl, challengeContent, { 
+                content_type: 'text/plain',
+                timeout: 30000 
+            }, (error, response) => {
+                if (error) {
+                    // If POST fails, try PUT
+                    needle.put(uploadUrl, challengeContent, { 
+                        content_type: 'text/plain',
+                        timeout: 30000 
+                    }, (putError, putResponse) => {
+                        if (putError) {
+                            console.error("Challenge upload error:", putError);
+                            return res.status(500).json({
+                                success: false,
+                                error: putError.message
+                            });
+                        }
+                        
+                        res.json({
+                            success: true,
+                            method: 'PUT',
+                            status: putResponse.statusCode,
+                            message: "Challenge file uploaded successfully",
+                            responseBody: putResponse.body
+                        });
+                    });
+                } else {
+                    res.json({
+                        success: true,
+                        method: 'POST',
+                        status: response.statusCode,
+                        message: "Challenge file uploaded successfully",
+                        responseBody: response.body
+                    });
+                }
+            });
+            
+        } catch (error) {
+            console.error("Challenge upload error:", error);
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+    });
 
     // Error handling middleware
     app.use(ErrorHandler);
